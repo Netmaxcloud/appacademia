@@ -1,0 +1,21 @@
+{
+  "name": "IA Trainer",
+  "short_name": "IATrainer",
+  "description": "Seu personal trainer com inteligência artificial.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#ef4444",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=iatrainer&backgroundColor=ef4444",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=iatrainer&backgroundColor=ef4444",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

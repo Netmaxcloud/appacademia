@@ -1,0 +1,5 @@
+{
+  "name": "IA Trainer",
+  "description": "Professional AI-powered fitness management system for personal trainers and clients.",
+  "requestFramePermissions": ["microphone"]
+}
