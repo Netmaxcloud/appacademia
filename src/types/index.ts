@@ -46,7 +46,6 @@ export interface Message {
   id: string;
   user_id: string;
   message: string;
-  sender_role?: string;
   created_at?: string;
 }
 

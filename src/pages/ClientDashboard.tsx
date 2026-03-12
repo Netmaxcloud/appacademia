@@ -90,36 +90,23 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
 
     setUploadingAvatar(true);
     try {
-      const fileName = `${profile.id}-${Date.now()}`;
-      
-      const { data, error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        
+        const newMetadata = { ...profile.metadata, avatar_url: base64String };
+        
+        const { error } = await supabase
+          .from('app_users')
+          .update({ metadata: newMetadata })
+          .eq('id', profile.id);
 
-      if (uploadError) {
-        console.warn('Erro ao subir para o Storage:', uploadError);
-        throw new Error('Falha no upload (Storage). Verifique se o bucket "avatars" foi criado e é público.');
-      }
-
-      // Buscar URL Pública da foto recém subida
-      const { data: publicUrlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      const newAvatarUrl = publicUrlData.publicUrl;
-      const newMetadata = { ...profile.metadata, avatar_url: newAvatarUrl };
-
-      // Atualizar link na Tabela de Usuários
-      const { error: dbError } = await supabase
-        .from('app_users')
-        .update({ metadata: newMetadata })
-        .eq('id', profile.id);
-
-      if (dbError) throw dbError;
-
-      setProfile({ ...profile, metadata: newMetadata });
-      alert('Foto carregada e salva com sucesso (Supabase Storage)!');
-
+        if (error) throw error;
+        
+        setProfile({ ...profile, metadata: newMetadata });
+        alert('Foto atualizada com sucesso!');
+      };
+      reader.readAsDataURL(file);
     } catch (error: any) {
       alert(`Erro ao atualizar foto: ${error.message}`);
     } finally {

@@ -98,7 +98,7 @@ export default function AdminDashboard({ profile, onLogout }: Props) {
         supabase.from('client_workouts').select('*').eq('user_id', clientId),
         supabase.from('client_diets').select('*').eq('user_id', clientId),
         supabase.from('client_payments').select('*').eq('user_id', clientId),
-        supabase.from('client_messages').select('*').eq('user_id', clientId).order('created_at', { ascending: true })
+        supabase.from('messages').select('*').eq('user_id', clientId).order('created_at', { ascending: true })
       ]);
 
       if (workoutsRes.data) setClientWorkouts(workoutsRes.data);
@@ -294,7 +294,7 @@ export default function AdminDashboard({ profile, onLogout }: Props) {
           
           const { error } = await supabase.from('client_diets').insert([{
             user_id: client.id,
-            diet_name: diet_name,
+            name: diet_name,
             meals
           }]);
           if (error) throw error;
@@ -307,7 +307,7 @@ export default function AdminDashboard({ profile, onLogout }: Props) {
           const client = clients.find(c => c.full_name?.toLowerCase().includes(client_name.toLowerCase()) || c.login?.toLowerCase().includes(client_name.toLowerCase()));
           if (!client) throw new Error(`Cliente ${client_name} não encontrado.`);
           
-          const { error } = await supabase.from('client_messages').insert([{
+          const { error } = await supabase.from('messages').insert([{
             user_id: client.id,
             message,
             sender_role: 'admin'
@@ -623,7 +623,7 @@ export default function AdminDashboard({ profile, onLogout }: Props) {
     if (!selectedClient || !newMessageText.trim()) return;
     try {
       const { error } = await supabase
-        .from('client_messages')
+        .from('messages')
         .insert([{
           user_id: selectedClient.id,
           message: newMessageText.trim(),
@@ -678,15 +678,7 @@ export default function AdminDashboard({ profile, onLogout }: Props) {
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Header */}
         <header className="h-20 border-b border-white/5 flex items-center justify-between px-6 md:px-10 bg-background/50 backdrop-blur-xl z-10">
-          <h2 className="text-2xl font-bold capitalize">
-            {activeTab === 'clients' ? 'Gerenciar Clientes' : 
-             activeTab === 'workouts' ? 'Gerenciar Treinos' : 
-             activeTab === 'diets' ? 'Gerenciar Dietas' : 
-             activeTab === 'plans' ? 'Gerenciar Planos' : 
-             activeTab === 'payments' ? 'Pagamentos e Mensalidades' : 
-             activeTab === 'messages' ? 'Central de Mensagens' : 
-             activeTab === 'settings' ? 'Configurações' : activeTab}
-          </h2>
+          <h2 className="text-2xl font-bold capitalize">{activeTab === 'clients' ? 'Gerenciar Clientes' : activeTab}</h2>
             <div className="flex items-center gap-4">
               <button 
                 onClick={toggleListening}
