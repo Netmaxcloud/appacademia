@@ -10,8 +10,8 @@ interface Props {
 }
 
 export default function Login({ onLogin }: Props) {
-  const [username, setUsername] = useState('admin@academia.com');
-  const [password, setPassword] = useState('2486');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,18 +21,6 @@ export default function Login({ onLogin }: Props) {
     setError(null);
 
     try {
-      // Fixed Admin Login
-      if (username === 'admin@academia.com' && password === '2486') {
-        const adminProfile = {
-          id: 'admin-id',
-          login: 'admin@academia.com',
-          role: 'admin' as const,
-          full_name: 'Administrador'
-        };
-        onLogin(adminProfile);
-        return;
-      }
-
       // Client Login
       let isAuthenticated = false;
       let userRecord = null;

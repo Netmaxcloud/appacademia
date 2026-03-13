@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { UserProfile, Workout, Diet, Payment, Message } from '../types';
 import { 
   Dumbbell, Apple, CreditCard, MessageSquare, TrendingUp, 
-  ChevronRight, Clock, Flame, LogOut, Loader2, Camera, CheckCircle, User
+  ChevronRight, Clock, Flame, LogOut, Loader2, Camera, CheckCircle, User, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -11,6 +11,32 @@ import RadioPlayer from '../components/RadioPlayer';
 import FitnessCard from '../components/FitnessCard';
 import PrimaryButton from '../components/PrimaryButton';
 import MobileNavbar from '../components/MobileNavbar';
+import Cropper, { Area } from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
+
+// Helper to crop image
+const getCroppedImg = async (imageSrc: string, pixelCrop: Area): Promise<string> => {
+  const image = new Image();
+  image.src = imageSrc;
+  await new Promise((resolve) => { image.onload = resolve; });
+  const canvas = document.createElement('canvas');
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No canvas context');
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    pixelCrop.width,
+    pixelCrop.height
+  );
+  return canvas.toDataURL('image/jpeg');
+};
 
 interface Props {
   profile: UserProfile | null;
@@ -24,9 +50,17 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
   const [diets, setDiets] = useState<Diet[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editedProfile, setEditedProfile] = useState<UserProfile | null>(profile);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const evolutionData = [
@@ -37,12 +71,6 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
   ];
 
   const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-  useEffect(() => {
-    if (profile) {
-      fetchData();
-    }
-  }, [profile?.id]);
 
   const fetchData = async () => {
     if (!profile) return;
@@ -77,6 +105,12 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
         .eq('user_id', profile.id)
         .order('created_at', { ascending: false });
       if (paymentData) setPayments(paymentData);
+
+      // Fetch Plans
+      const { data: planData } = await supabase
+        .from('plans')
+        .select('*');
+      if (planData) setPlans(planData);
     } catch (e) {
       console.error('Error fetching client data', e);
     } finally {
@@ -84,51 +118,133 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !profile) return;
+  useEffect(() => {
+    if (profile) {
+      fetchData();
+    }
+  }, [profile?.id]);
 
+  const onCropComplete = useCallback((_: Area, croppedAreaPixels: Area) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
+
+  const saveCroppedImage = async () => {
+    if (!imageToCrop || !croppedAreaPixels || !profile) return;
     setUploadingAvatar(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        
-        const newMetadata = { ...profile.metadata, avatar_url: base64String };
-        
-        const { error } = await supabase
-          .from('app_users')
-          .update({ metadata: newMetadata })
-          .eq('id', profile.id);
-
-        if (error) throw error;
-        
-        setProfile({ ...profile, metadata: newMetadata });
-        alert('Foto atualizada com sucesso!');
-      };
-      reader.readAsDataURL(file);
-    } catch (error: any) {
-      alert(`Erro ao atualizar foto: ${error.message}`);
+      const croppedImage = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      const response = await fetch(croppedImage);
+      const blob = await response.blob();
+      const fileName = `avatar_${profile.id}_${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await supabase.from('app_users').update({ metadata: { ...profile.metadata, avatar_url: publicUrl } }).eq('id', profile.id);
+      setProfile({ ...profile, metadata: { ...profile.metadata, avatar_url: publicUrl } });
+      setImageToCrop(null);
+    } catch (e) {
+      console.error('Avatar upload error:', e);
+      alert('Erro ao atualizar foto');
     } finally {
       setUploadingAvatar(false);
     }
   };
 
-  const handleLogout = () => onLogout();
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setImageToCrop(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-12 h-12 text-primary animate-spin" />
-      </div>
-    );
-  }
+  const handleLogout = () => {
+    onLogout();
+  };
+
+  const handleReplyMessage = async () => {
+    if (!replyMessage.trim() || !profile) return;
+    const { error } = await supabase.from('client_messages').insert({
+      user_id: profile.id,
+      message: replyMessage,
+      created_at: new Date().toISOString()
+    });
+    if (error) alert('Erro ao enviar mensagem');
+    else {
+      setReplyMessage('');
+      fetchData();
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!editedProfile || !profile) return;
+    const { error } = await supabase.from('app_users').update({
+      full_name: editedProfile.full_name,
+      email: editedProfile.email
+    }).eq('id', profile.id);
+    if (error) {
+      console.error('Update error:', error);
+      alert('Erro ao atualizar perfil: ' + error.message);
+    }
+    else {
+      setProfile(editedProfile);
+      setIsEditingProfile(false);
+      alert('Perfil atualizado!');
+    }
+  };
+
+  const handleSubscribe = async (planId: string) => {
+    if (!profile) return;
+    const { error } = await supabase.from('client_payments').insert({
+      user_id: profile.id,
+      plan_id: planId,
+      status: 'pending',
+      amount: 0 // Will be updated by admin
+    });
+    if (error) alert('Erro ao solicitar assinatura');
+    else alert('Solicitação enviada! Aguarde a confirmação do admin.');
+  };
+
 
   const avatarSrc = profile?.metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.login}`;
   const todayWorkout = workouts.length > 0 ? workouts[0] : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-40">
+      {/* Cropping Modal */}
+      <AnimatePresence>
+        {imageToCrop && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4"
+          >
+            <div className="relative w-full h-[60vh] mb-4">
+              <Cropper
+                image={imageToCrop}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+                cropShape="round"
+              />
+            </div>
+            <div className="flex gap-4 w-full max-w-md">
+              <PrimaryButton onClick={() => setImageToCrop(null)} className="bg-transparent border border-white/20">Cancelar</PrimaryButton>
+              <PrimaryButton onClick={saveCroppedImage} disabled={uploadingAvatar}>
+                {uploadingAvatar ? <Loader2 className="animate-spin" /> : 'Salvar'}
+              </PrimaryButton>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -409,7 +525,7 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
               <div className="space-y-3">
                 <h4 className="text-sm font-bold text-white/50 uppercase tracking-wider mb-4 px-2">Configurações</h4>
                 
-                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5">
+                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5" onClick={() => setActiveTab('personal_data')}>
                   <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white">
                     <User className="w-5 h-5" />
                   </div>
@@ -419,7 +535,7 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
                   <ChevronRight className="text-white/20" />
                 </FitnessCard>
 
-                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5">
+                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5" onClick={() => setActiveTab('payments')}>
                   <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white">
                     <CreditCard className="w-5 h-5" />
                   </div>
@@ -429,7 +545,7 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
                   <ChevronRight className="text-white/20" />
                 </FitnessCard>
 
-                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5">
+                <FitnessCard className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5" onClick={() => setActiveTab('messages')}>
                   <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white">
                     <MessageSquare className="w-5 h-5" />
                   </div>
@@ -448,6 +564,74 @@ export default function ClientDashboard({ profile: initialProfile, onLogout }: P
               >
                 Sair do Aplicativo
               </PrimaryButton>
+            </motion.div>
+          )}
+
+          {activeTab === 'personal_data' && (
+            <motion.div key="personal_data" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+              <button onClick={() => setActiveTab('profile')} className="text-white/50 flex items-center gap-2"><ChevronRight className="rotate-180" /> Voltar</button>
+              <h3 className="text-2xl font-black text-white uppercase tracking-wide">Dados Pessoais</h3>
+              <FitnessCard className="p-6 space-y-4">
+                {isEditingProfile ? (
+                  <>
+                    <input className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-4 text-white" value={editedProfile?.full_name || ''} onChange={e => setEditedProfile({...editedProfile!, full_name: e.target.value})} placeholder="Nome" />
+                    <input className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-4 text-white" value={editedProfile?.email || ''} onChange={e => setEditedProfile({...editedProfile!, email: e.target.value})} placeholder="Email" />
+                    <PrimaryButton onClick={handleUpdateProfile}>Salvar</PrimaryButton>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-white">Nome: {profile?.full_name}</p>
+                    <p className="text-white">Email: {profile?.email}</p>
+                    <PrimaryButton onClick={() => { setEditedProfile(profile); setIsEditingProfile(true); }}>Editar</PrimaryButton>
+                  </>
+                )}
+              </FitnessCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'payments' && (
+            <motion.div key="payments" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+              <button onClick={() => setActiveTab('profile')} className="text-white/50 flex items-center gap-2"><ChevronRight className="rotate-180" /> Voltar</button>
+              <h3 className="text-2xl font-black text-white uppercase tracking-wide">Assinatura e Pagamentos</h3>
+              
+              <h4 className="text-white font-bold">Planos Disponíveis</h4>
+              {plans.map(plan => (
+                <FitnessCard key={plan.id} className="p-6 flex justify-between items-center">
+                  <div>
+                    <p className="text-white font-bold">{plan.name}</p>
+                    <p className="text-white/50">R$ {plan.price}</p>
+                  </div>
+                  <PrimaryButton onClick={() => handleSubscribe(plan.id)}>Assinar</PrimaryButton>
+                </FitnessCard>
+              ))}
+
+              <h4 className="text-white font-bold mt-8">Minhas Assinaturas</h4>
+              {payments.map(payment => (
+                <FitnessCard key={payment.id} className="p-6">
+                  <p className="text-white">Plano: {payment.plans?.name}</p>
+                  <p className="text-white">Status: {payment.status}</p>
+                  {payment.pix_code && <p className="text-[#ff3b3b] font-bold mt-2">Pix: {payment.pix_code}</p>}
+                </FitnessCard>
+              ))}
+            </motion.div>
+          )}
+
+          {activeTab === 'messages' && (
+            <motion.div key="messages" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+              <button onClick={() => setActiveTab('profile')} className="text-white/50 flex items-center gap-2"><ChevronRight className="rotate-180" /> Voltar</button>
+              <h3 className="text-2xl font-black text-white uppercase tracking-wide">Mensagens do Treinador</h3>
+              <div className="space-y-4">
+                {messages.map(message => (
+                  <FitnessCard key={message.id} className="p-6">
+                    <p className="text-white">{message.message}</p>
+                    <p className="text-xs text-white/50 mt-2">{new Date(message.created_at || '').toLocaleDateString()}</p>
+                  </FitnessCard>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input className="flex-1 bg-black/40 border border-white/10 rounded-2xl py-4 px-4 text-white" value={replyMessage} onChange={e => setReplyMessage(e.target.value)} placeholder="Responder..." />
+                <PrimaryButton onClick={handleReplyMessage}>Enviar</PrimaryButton>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

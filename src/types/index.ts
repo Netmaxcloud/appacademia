@@ -14,6 +14,7 @@ export interface UserProfile {
   level?: 'beginner' | 'intermediate' | 'advanced';
   metadata?: any;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Workout {
@@ -24,6 +25,7 @@ export interface Workout {
   description?: string;
   exercises: Exercise[];
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Exercise {
@@ -40,6 +42,7 @@ export interface Progress {
   weight: number;
   notes?: string;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Message {
@@ -47,6 +50,7 @@ export interface Message {
   user_id: string;
   message: string;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Plan {
@@ -56,6 +60,7 @@ export interface Plan {
   duration_months: number;
   features: string[];
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Payment {
@@ -65,6 +70,7 @@ export interface Payment {
   amount: number;
   status: string;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Diet {
@@ -73,6 +79,7 @@ export interface Diet {
   name: string;
   meals: any[];
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface AIConfig {
